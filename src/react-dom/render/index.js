@@ -1,0 +1,390 @@
+import { updateQueue } from '../../react/component/updater'
+import { REACT_FORWARD_REF, REACT_MOVE, REACT_NEXT, REACT_NULL, REACT_TEXT } from '../../react/createElement'
+import addEvent, { isEvent } from './event'
+import { invokeComponentDidMount, invokeComponentWillUnmount, invokeGetDerivedStateFromProps } from '../../react/component'
+
+
+export const normalizeChildren = (children) => {
+  const _children = Array.isArray(children) ? children : children ? [children] : []
+  return _children
+}
+
+export const mountChildren = (children, container) => {
+  if (Array.isArray(children)) {
+    children.forEach((child, index) => {
+      child.mountIndex = index // 为diff做准备
+      mount(child, container)
+    })
+  } else {
+    // props.children.index = 0
+    children.mountIndex = 0
+    mount(children, container)
+  }
+}
+
+export const updateProps = (dom, oldProps, newProps) => {
+  if (newProps) {
+    for (let propName in newProps) {
+      if (propName === 'children') {
+        continue
+      } else if (propName === 'style') {
+        for(let styleName in newProps.style) {
+          dom.style[styleName] = newProps.style[styleName]
+        }
+      } else if(isEvent(propName)) {
+        const listener = newProps[propName]
+        const eventType = propName.toLowerCase()
+        // 事件不和dom绑定，委托给document
+        addEvent(dom, eventType, listener)
+      } else  {
+        dom[propName] = newProps[propName]
+      }
+    } 
+  }
+
+  if (oldProps) {
+    for(let propName in oldProps) {
+      if (!newProps[propName]) {
+        dom[propName] = null
+      } else if (propName === 'style') {
+        for (let styleName in oldProps.style) {
+          if (!newProps.style[styleName]) {
+            dom.style[styleName] = null
+          }
+        }
+      }
+    }
+  }
+}
+
+export const createDom = (vdom) => {
+  const { type, props = {}, ref } = vdom
+  let dom
+
+  if (type === REACT_TEXT) { // 文本组件
+    dom = document.createTextNode(vdom.content)
+
+  } else if (typeof type === 'function') { 
+    if (type.isReactComponent) { // 类组件
+      dom = mountClassComponent(vdom)
+
+    } else { // 函数组件
+      dom = mountFunctionComponent(vdom)
+
+    }
+  } else if (type && type.$$type === REACT_FORWARD_REF) { // FowardRef组件
+    dom = mountForwardRef(vdom)
+
+  } else { // 真实html
+
+    // 创建dom
+    dom = document.createElement(type)
+
+    // 处理属性
+    updateProps(dom, {}, props)
+
+    // 处理children
+    const children = props.children
+    if (children) {
+      mountChildren(children, dom, props)
+    }
+
+    if (ref) {
+      ref.current = dom
+    }
+  }
+
+  vdom.dom = dom
+
+  return dom
+}
+
+export const mountForwardRef = (fr_vdom) => {
+  const { type, props, ref } = fr_vdom
+  const vdom = type.render(props, ref)
+  return createDom(vdom)
+}
+
+export const mountClassComponent = (vdom) => {
+  const { type, props, ref } = vdom
+  const component = new type(props)
+  if (ref) {
+    ref.current = component
+  }
+
+  const componentWillMount = component.componentWillMount
+  componentWillMount && componentWillMount()
+  const renderVdom = component.render()
+  component.renderVdom = renderVdom
+
+  const dom = createDom(renderVdom)
+  dom.component = component // 用于componentDidMount
+  vdom.component = component
+  renderVdom.component = component // 用于componentWillUnmount
+  return dom
+}
+
+export const mountFunctionComponent = (vdom) => {
+  const { type, props } = vdom
+  const renderVdom = type(props)
+  vdom.renderVdom = renderVdom
+  return createDom(renderVdom)
+}
+
+export const mount = (vdom, container) => {
+  const dom = createDom(vdom)
+  container.appendChild(dom)
+
+  const component = dom.component
+  if (component) {
+    invokeGetDerivedStateFromProps(component, component.props, component.state)
+    invokeComponentDidMount(component)
+  }
+}
+
+export const unmount = (vdom, needRemove = true) => {
+  const { props, ref } = vdom
+
+  const component = vdom.component
+  invokeComponentWillUnmount(component)
+
+  if (ref) {
+    ref.current = null
+  }
+
+  if (props && props.children) {
+    const children = normalizeChildren(props.children)
+    children.forEach(child => unmount(child, needRemove))
+  }
+
+  if (needRemove) {
+    const dom = vdom.dom
+    dom && dom.parentElement.removeChild(dom)
+  }
+}
+
+export default function render(vdom, container) {
+  mount(vdom, container)
+}
+
+export const invokeComponentUpdate = (component, nextProps, nextState, prevProps, prevState) => {
+  component.props = nextProps
+
+  invokeGetDerivedStateFromProps(component, nextProps, nextState)
+
+  let willUpdate = true
+  const shouldComponentUpdate = component.shouldComponentUpdate
+  if (shouldComponentUpdate) {
+    willUpdate = !!shouldComponentUpdate(nextProps, nextState)
+  }
+
+  if (willUpdate) {
+    const componentWillUpdate = component.componentWillUpdate
+    const componentDidUpdate = component.componentDidUpdate
+    const getSnapshotBeforeUpdate = component.getSnapshotBeforeUpdate
+
+    componentWillUpdate && componentWillUpdate(nextProps, nextState)
+    getSnapshotBeforeUpdate && getSnapshotBeforeUpdate(prevProps, prevState)
+    component.forceUpdate()
+    componentDidUpdate && componentDidUpdate(prevProps, prevState)
+  }
+}
+
+export const _update_without_diff = (parentDom, oldVdom, newVdom) => {
+  const newDom = createDom(newVdom)
+  const oldDom = oldVdom.dom
+
+  parentDom.replaceChild(newDom, oldDom)
+}
+
+export const patchVdom = (parentDom, vdom, nextDom) => {
+  if (vdom.type === undefined) {
+    return
+  }
+
+  const newDom = createDom(vdom)
+
+  if (nextDom) {
+    parentDom.insertBefore(newDom, nextDom)
+  } else {
+    parentDom.appendChild(newDom)
+  }
+
+  const component = vdom.component
+  if (component) {
+    invokeGetDerivedStateFromProps(component, component.props, component.state)
+    invokeComponentDidMount(component)
+  }
+
+  vdom.dom = newDom
+}
+
+const _updateClassComponent = (parentDom, newVdom, oldVdom) => {
+  const component = newVdom.component = oldVdom.component
+  const nextProps = newVdom.props
+  const componentWillReceiveProps = component.componentWillReceiveProps
+  if (componentWillReceiveProps) {
+    componentWillReceiveProps(nextProps)
+  }
+
+  const rawIsBatchData = updateQueue.isBatchData // 当外部为点击事件时，此时这个值为true，会导致
+  updateQueue.isBatchData = false
+  component.updater.emitUpdate(nextProps)
+  updateQueue.isBatchData = rawIsBatchData
+}
+
+const _updateFunctionComponent = (parentDom, newVdom, oldVdom) => {
+  const { type, props } = newVdom
+  const newRenderVdom = type(props)
+  _update(parentDom, oldVdom.renderVdom, newRenderVdom)
+  newVdom.renderVdom = newRenderVdom
+}
+
+const _diff_simple = (parentDom, oldChildren, newChildren) => {
+  const _oldChildren = normalizeChildren(oldChildren)
+  const _newChildren = normalizeChildren(newChildren)
+
+  const maxLength = Math.max(_oldChildren.length, _newChildren.length)
+  for(let i = 0; i < maxLength; i++) {
+    const nextDom = _oldChildren.find((item, index) => item && index > i)?.dom
+    _update(parentDom, _oldChildren[i], _newChildren[i], nextDom)
+  }
+}
+
+const _diff = (parentDom, oldChildren, newChildren) => {
+
+  const makeCacheMap = (children) => {
+    const map = {}
+    children.forEach((child, index) => {
+      const key = child.key !== null && child.key !== undefined ? child.key : index // 0的话也会用index，不符合需求
+      map[key] = child
+    })
+
+    return map
+  }
+
+  const _oldChildren = normalizeChildren(oldChildren)
+  const _newChildren = normalizeChildren(newChildren)
+
+  // 将老的children缓存起来用以复用
+  const oldChildrenMap = makeCacheMap(_oldChildren)
+
+  // 遍历新的进行处理
+  let lastPlaceIndex = 0
+  const patch = []
+
+  _newChildren.forEach((newChild, index) => {
+    newChild.mountIndex = index
+
+    if (newChild.type === REACT_NULL) { // 新节点为空时，结束当前循环，后面oldChild对应的dom会被直接删除
+      return
+    } 
+
+    const newKey = newChild.key !== null && newChild.key !== undefined ? newChild.key : index
+    const oldChild = oldChildrenMap[newKey]
+
+    if (oldChild && oldChild.type !== REACT_NULL) { // 缓存可用且不为NULL节点，更新属性和children
+      _updateElement(parentDom, oldChild, newChild)
+      if (oldChild.mountIndex < lastPlaceIndex) {
+        patch.push({
+          _type: REACT_MOVE,
+          _old: oldChild,
+          _new: newChild,
+          _mountIndex: index
+        })
+      }
+
+      delete oldChildrenMap[newKey]
+      lastPlaceIndex = Math.max(oldChild.mountIndex, newChild.mountIndex)
+
+    } else {
+      patch.push({
+        _type: REACT_NEXT,
+        _new: newChild,
+        _mountIndex: index
+      })
+    }
+  })
+
+  // 删除所有不再需要的元素，包括需要移动的（因为移动的元素已经在patch中缓存了）
+  const moveVdoms = patch.filter(item => item._type === REACT_MOVE).map(item => item._old)
+  moveVdoms.forEach(vdom => {
+    if (vdom.dom) { // NULL节点没有dom
+      parentDom.removeChild(vdom.dom)
+    }
+  })
+
+  const removeVdoms = Object.values(oldChildrenMap)
+  removeVdoms.forEach(vdom => {
+    if (vdom.dom) {
+      unmount(vdom, false)
+      parentDom.removeChild(vdom.dom)
+    }
+  })
+  
+
+  //
+  patch.forEach(item => {
+    const { _type, _new: newVdom, _old, _mountIndex } = item
+
+    const rawDomArr = parentDom.childNodes
+    let newDom
+    if (_type === REACT_NEXT) {
+      newDom = createDom(newVdom)
+      
+    } else if (_type === REACT_MOVE) {
+      newDom = newVdom.dom
+    }
+
+    const nextDom = rawDomArr[_mountIndex]
+    if (nextDom) {
+      parentDom.insertBefore(newDom, nextDom)
+    } else {
+      parentDom.appendChild(newDom)
+    }
+  })
+}
+
+const _updateElement = (parentDom, oldVdom, newVdom) => {
+  const currentDom = oldVdom.dom
+  const type = newVdom.type
+  if (type === REACT_TEXT) {
+    parentDom.textContent = newVdom.content
+
+  } else if (typeof type === 'string') {
+    updateProps(currentDom, oldVdom.props, newVdom.props)
+    // _diff_simple(currentDom, oldVdom.props.children, newVdom.props.children)
+    _diff(currentDom, oldVdom.props.children, newVdom.props.children)
+
+  } else if (typeof type === 'function') {
+    if (oldVdom.type.isReactComponent) { // 类组件
+      _updateClassComponent(parentDom, newVdom, oldVdom)
+
+    } else { // 函数组件
+      _updateFunctionComponent(parentDom, newVdom, oldVdom)
+    }
+  }
+
+  newVdom.dom = currentDom
+}
+
+export const _update = (parentDom, oldVdom, newVdom, nextDom) => {
+  if (!oldVdom && !newVdom) {
+    return 
+
+  } else if (oldVdom && !newVdom) {
+    unmount(oldVdom)
+
+  } else if (!oldVdom && newVdom) {
+    patchVdom(parentDom, newVdom, nextDom)
+
+  } else { // oldVdom && newVdom
+    if (oldVdom.type !== newVdom.type) {
+      unmount(oldVdom)
+      patchVdom(parentDom, newVdom, nextDom)
+
+    } else {
+      _updateElement(parentDom, oldVdom, newVdom)
+    }
+  }
+}
