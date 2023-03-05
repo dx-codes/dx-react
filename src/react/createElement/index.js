@@ -6,6 +6,9 @@ export const REACT_FORWARD_REF = Symbol('react.foward_ref')
 export const REACT_MOVE = Symbol('react.move')
 export const REACT_NEXT = Symbol('react.next')
 
+export const REACT_CONTEXT = Symbol('react.context')
+export const REACT_PROVIDER = Symbol('react.provider')
+
 export const makeVdom = (vdom) => {
   if (typeof vdom === 'string' || typeof vdom === 'number') {
     return {

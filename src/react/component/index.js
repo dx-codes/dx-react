@@ -58,3 +58,14 @@ export const invokeComponentWillUnmount = (comopnent) => {
   const componentWillUnmount = comopnent.componentWillUnmount
   componentWillUnmount && componentWillUnmount()
 }
+
+export const disposeContextType = (component) => {
+  if (!component) {
+    return
+  }
+
+  const contextType = component.constructor.contextType
+  if (contextType) {
+    component.context = contextType._currentValue
+  }
+}

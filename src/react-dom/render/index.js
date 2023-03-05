@@ -1,7 +1,7 @@
 import { updateQueue } from '../../react/component/updater'
-import { REACT_FORWARD_REF, REACT_MOVE, REACT_NEXT, REACT_NULL, REACT_TEXT } from '../../react/createElement'
+import { REACT_CONTEXT, REACT_FORWARD_REF, REACT_MOVE, REACT_NEXT, REACT_NULL, REACT_PROVIDER, REACT_TEXT } from '../../react/createElement'
 import addEvent, { isEvent } from './event'
-import { invokeComponentDidMount, invokeComponentWillUnmount, invokeGetDerivedStateFromProps } from '../../react/component'
+import { disposeContextType, invokeComponentDidMount, invokeComponentWillUnmount, invokeGetDerivedStateFromProps } from '../../react/component'
 
 
 export const normalizeChildren = (children) => {
@@ -67,14 +67,17 @@ export const createDom = (vdom) => {
   } else if (typeof type === 'function') { 
     if (type.isReactComponent) { // 类组件
       dom = mountClassComponent(vdom)
-
     } else { // 函数组件
       dom = mountFunctionComponent(vdom)
-
     }
+
   } else if (type && type.$$type === REACT_FORWARD_REF) { // FowardRef组件
     dom = mountForwardRef(vdom)
 
+  } else if (type && type.$$type === REACT_CONTEXT) {
+    dom = mountContext(vdom)
+  } else if (type && type.$$type === REACT_PROVIDER) {
+    dom = mountProvider(vdom)
   } else { // 真实html
 
     // 创建dom
@@ -99,6 +102,24 @@ export const createDom = (vdom) => {
   return dom
 }
 
+export const mountContext = (c_vdom) => {
+  const { type, props } = c_vdom
+  const value = type._context._currentValue
+  const renderVdom = props.children(value)
+
+  c_vdom.renderVdom = renderVdom
+  return createDom(renderVdom)
+}
+
+export const mountProvider = (p_vdom) => {
+  const { type, props } = p_vdom
+  type._context._currentValue = props.value
+
+  const renderVdom = p_vdom.props.children
+  p_vdom.renderVdom = renderVdom
+  return createDom(renderVdom)
+}
+
 export const mountForwardRef = (fr_vdom) => {
   const { type, props, ref } = fr_vdom
   const vdom = type.render(props, ref)
@@ -111,6 +132,8 @@ export const mountClassComponent = (vdom) => {
   if (ref) {
     ref.current = component
   }
+
+  disposeContextType(component)
 
   const componentWillMount = component.componentWillMount
   componentWillMount && componentWillMount()
@@ -170,6 +193,8 @@ export default function render(vdom, container) {
 export const invokeComponentUpdate = (component, nextProps, nextState, prevProps, prevState) => {
   component.props = nextProps
 
+  disposeContextType(component)
+
   invokeGetDerivedStateFromProps(component, nextProps, nextState)
 
   let willUpdate = true
@@ -222,6 +247,7 @@ export const patchVdom = (parentDom, vdom, nextDom) => {
 const _updateClassComponent = (parentDom, newVdom, oldVdom) => {
   const component = newVdom.component = oldVdom.component
   const nextProps = newVdom.props
+
   const componentWillReceiveProps = component.componentWillReceiveProps
   if (componentWillReceiveProps) {
     componentWillReceiveProps(nextProps)
@@ -238,6 +264,24 @@ const _updateFunctionComponent = (parentDom, newVdom, oldVdom) => {
   const newRenderVdom = type(props)
   _update(parentDom, oldVdom.renderVdom, newRenderVdom)
   newVdom.renderVdom = newRenderVdom
+}
+
+const _updateProvider = (parentDom, newVdom, oldVdom) => {
+  const { type, props } = newVdom
+  type._context._currentValue = props.value
+
+  const renderVdom = props.children
+  _diff(parentDom, oldVdom.renderVdom, renderVdom)
+  newVdom.renderVdom = renderVdom
+}
+
+const _updateContext = (parentDom, newVdom, oldVdom) => {
+  const { type, props } = newVdom
+
+  const value = type._context._currentValue
+  const renderVdom = props.children(value)
+  _diff(parentDom, oldVdom.renderVdom, renderVdom)
+  newVdom.renderVdom = renderVdom
 }
 
 const _diff_simple = (parentDom, oldChildren, newChildren) => {
@@ -316,6 +360,7 @@ const _diff = (parentDom, oldChildren, newChildren) => {
 
   const removeVdoms = Object.values(oldChildrenMap)
   removeVdoms.forEach(vdom => {
+    debugger
     if (vdom.dom) {
       unmount(vdom, false)
       parentDom.removeChild(vdom.dom)
@@ -347,7 +392,15 @@ const _diff = (parentDom, oldChildren, newChildren) => {
 const _updateElement = (parentDom, oldVdom, newVdom) => {
   const currentDom = oldVdom.dom
   const type = newVdom.type
-  if (type === REACT_TEXT) {
+
+  if (type && type.$$type === REACT_PROVIDER) {
+    _updateProvider(parentDom, newVdom, oldVdom)
+
+  } else if (type && type.$$type === REACT_CONTEXT) {
+    _updateContext(parentDom, newVdom, oldVdom)
+
+  } else if (type === REACT_TEXT) {
+    // todo 直接赋值会导致<div>text<div>1234</div></div> => <div>newText</div> 后面的<div>1234</div>会被全部覆盖掉
     parentDom.textContent = newVdom.content
 
   } else if (typeof type === 'string') {
