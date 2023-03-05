@@ -66,7 +66,7 @@ const root = document.getElementById('root')
  * 
  * 
  * ==== 从dom中删除Move和map中剩余的元素 ====
- * dom: [A, C, E] 
+ * dom中remove: [A, C, E] 
  * 此时B依然缓存在patch中，并不需要重新创建
  * patch=[{ B, MOVE, 3 }, { G, NEXT, 4}]
  * 

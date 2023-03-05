@@ -184,9 +184,9 @@ export const invokeComponentUpdate = (component, nextProps, nextState, prevProps
     const getSnapshotBeforeUpdate = component.getSnapshotBeforeUpdate
 
     componentWillUpdate && componentWillUpdate(nextProps, nextState)
-    getSnapshotBeforeUpdate && getSnapshotBeforeUpdate(prevProps, prevState)
+    const snapshot = getSnapshotBeforeUpdate && getSnapshotBeforeUpdate(prevProps, prevState)
     component.forceUpdate()
-    componentDidUpdate && componentDidUpdate(prevProps, prevState)
+    componentDidUpdate && componentDidUpdate(prevProps, prevState, snapshot)
   }
 }
 
@@ -306,7 +306,7 @@ const _diff = (parentDom, oldChildren, newChildren) => {
     }
   })
 
-  // 删除所有不再需要的元素，包括需要移动的（因为移动的元素已经在patch中缓存了）
+  // 删除所有不再需要的元素，包括需要移动的（因为移动的元素已经在patch中缓存了，需要从原位置删除放到正确的位置上去）
   const moveVdoms = patch.filter(item => item._type === REACT_MOVE).map(item => item._old)
   moveVdoms.forEach(vdom => {
     if (vdom.dom) { // NULL节点没有dom
@@ -323,7 +323,6 @@ const _diff = (parentDom, oldChildren, newChildren) => {
   })
   
 
-  //
   patch.forEach(item => {
     const { _type, _new: newVdom, _old, _mountIndex } = item
 
