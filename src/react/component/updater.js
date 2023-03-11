@@ -34,15 +34,28 @@ class Updater {
   }
 
   updateComponent(nextProps) {
-    if (nextProps || this.pendingState.length > 0) {
-      const prevProps = { ...this.component.props }
-      const prevState = { ...this.component.state }
-      ReactDom.invokeComponentUpdate(this.component, nextProps, this.getState(), prevProps, prevState)
+    const prevProps = this.component.props
+    if (!nextProps) {
+      nextProps = prevProps
     }
+    const prevState = this.component.state
+    const nextState = this.getState()
+
+    // const hasChanged = 
+    //   nextProps !== prevProps || 
+    //   prevState !== nextState
+
+    // if (hasChanged) { // PureComponent才执行，否则默认全部更新
+      // const prevProps = { ...prevProps }
+      // const prevState = { ...prevState }
+    //   ReactDom.invokeComponentUpdate(this.component, nextProps, nextState, prevProps, prevState)
+    // }
+
+    ReactDom.invokeComponentUpdate(this.component, nextProps, nextState, prevProps, prevState)
   }
 
   getState() {
-    let { state } = this.component
+    let state = { ...this.component.state } // 不在这里改变component.state的引用，后面还要在其他地方用到
     this.pendingState.forEach(_state => {
       state = { ...state, ..._state }
     })

@@ -1,5 +1,5 @@
 import { updateQueue } from '../../react/component/updater'
-import { REACT_CONTEXT, REACT_FORWARD_REF, REACT_MOVE, REACT_NEXT, REACT_NULL, REACT_PROVIDER, REACT_TEXT } from '../../react/createElement'
+import { REACT_CONTEXT, REACT_FORWARD_REF, REACT_MEMO, REACT_MOVE, REACT_NEXT, REACT_NULL, REACT_PORTAL, REACT_PROVIDER, REACT_TEXT } from '../../react/createElement'
 import addEvent, { isEvent } from './event'
 import { disposeContextType, invokeComponentDidMount, invokeComponentWillUnmount, invokeGetDerivedStateFromProps } from '../../react/component'
 
@@ -61,7 +61,10 @@ export const createDom = (vdom) => {
   const { type, props = {}, ref } = vdom
   let dom
 
-  if (type === REACT_TEXT) { // 文本组件
+  if (type === REACT_NULL) {
+    dom = null
+
+  } else if (type === REACT_TEXT) { // 文本组件
     dom = document.createTextNode(vdom.content)
 
   } else if (typeof type === 'function') { 
@@ -76,8 +79,16 @@ export const createDom = (vdom) => {
 
   } else if (type && type.$$type === REACT_CONTEXT) {
     dom = mountContext(vdom)
+
   } else if (type && type.$$type === REACT_PROVIDER) {
     dom = mountProvider(vdom)
+
+  } else if (type && type.$$type === REACT_PORTAL) {
+    dom = mountPortal(vdom)
+
+  } else if (type && type.$$type === REACT_MEMO) {
+    dom = mountMemo(vdom)
+
   } else { // 真实html
 
     // 创建dom
@@ -141,9 +152,13 @@ export const mountClassComponent = (vdom) => {
   component.renderVdom = renderVdom
 
   const dom = createDom(renderVdom)
-  dom.component = component // 用于componentDidMount
   vdom.component = component
   renderVdom.component = component // 用于componentWillUnmount
+
+  if (dom) {
+    dom.component = component // 用于componentDidMount
+  }
+
   return dom
 }
 
@@ -154,18 +169,32 @@ export const mountFunctionComponent = (vdom) => {
   return createDom(renderVdom)
 }
 
+export const mountMemo = (m_vdom) => {
+  const { type, props } = m_vdom
+
+  const renderVdom = type.type(props)
+  m_vdom.renderVdom = renderVdom
+  
+  return createDom(renderVdom)
+}
+
+export const mountPortal = (vdom) => {
+  mount(vdom.children, vdom.containerInfo)
+}
+
 export const mount = (vdom, container) => {
   const dom = createDom(vdom)
-  container.appendChild(dom)
-
-  const component = dom.component
-  if (component) {
-    invokeGetDerivedStateFromProps(component, component.props, component.state)
-    invokeComponentDidMount(component)
+  if (dom) {
+    container.appendChild(dom)
+    const component = dom.component
+    if (component) {
+      invokeGetDerivedStateFromProps(component, component.props, component.state)
+      invokeComponentDidMount(component)
+    }
   }
 }
 
-export const unmount = (vdom, needRemove = true) => {
+export const unmount = (vdom, newVdom) => {
   const { props, ref } = vdom
 
   const component = vdom.component
@@ -175,15 +204,26 @@ export const unmount = (vdom, needRemove = true) => {
     ref.current = null
   }
 
-  if (props && props.children) {
-    const children = normalizeChildren(props.children)
-    children.forEach(child => unmount(child, needRemove))
+  if (vdom.type && vdom.$$type === REACT_PORTAL) {
+    document.body.removeChild(vdom.containerInfo)
+    return
   }
 
-  if (needRemove) {
-    const dom = vdom.dom
-    dom && dom.parentElement.removeChild(dom)
+  if (props && props.children) {
+    const children = normalizeChildren(props.children)
+    children.forEach(child => unmount(child))
   }
+
+  const dom = vdom.dom
+  if (dom) {
+    if (newVdom && newVdom.type && newVdom.$$type === REACT_PORTAL) {
+      // portal时保存原来的parentDom，因为原来用来替换的非portal dom被remove后是无法拿到parentDom的
+      newVdom.parentDom = dom.parentElement
+    }
+
+    dom.parentElement.removeChild(dom)
+  }
+
 }
 
 export default function render(vdom, container) {
@@ -191,8 +231,6 @@ export default function render(vdom, container) {
 }
 
 export const invokeComponentUpdate = (component, nextProps, nextState, prevProps, prevState) => {
-  component.props = nextProps
-
   disposeContextType(component)
 
   invokeGetDerivedStateFromProps(component, nextProps, nextState)
@@ -200,10 +238,13 @@ export const invokeComponentUpdate = (component, nextProps, nextState, prevProps
   let willUpdate = true
   const shouldComponentUpdate = component.shouldComponentUpdate
   if (shouldComponentUpdate) {
-    willUpdate = !!shouldComponentUpdate(nextProps, nextState)
+    willUpdate = !!shouldComponentUpdate.call(component, nextProps, nextState)
   }
 
   if (willUpdate) {
+    component.props = nextProps
+    component.state = nextState
+
     const componentWillUpdate = component.componentWillUpdate
     const componentDidUpdate = component.componentDidUpdate
     const getSnapshotBeforeUpdate = component.getSnapshotBeforeUpdate
@@ -222,6 +263,7 @@ export const _update_without_diff = (parentDom, oldVdom, newVdom) => {
   parentDom.replaceChild(newDom, oldDom)
 }
 
+// portalOldDom表示portal被加载前的dom，当下一次返回正常vdom而不是portal时用于找到前面的parentDom
 export const patchVdom = (parentDom, vdom, nextDom) => {
   if (vdom.type === undefined) {
     return
@@ -231,7 +273,7 @@ export const patchVdom = (parentDom, vdom, nextDom) => {
 
   if (nextDom) {
     parentDom.insertBefore(newDom, nextDom)
-  } else {
+  } else if (newDom) {
     parentDom.appendChild(newDom)
   }
 
@@ -282,6 +324,21 @@ const _updateContext = (parentDom, newVdom, oldVdom) => {
   const renderVdom = props.children(value)
   _diff(parentDom, oldVdom.renderVdom, renderVdom)
   newVdom.renderVdom = renderVdom
+}
+
+const _updateMemo = (parentDom, newVDom, oldVDom) => {
+  const { props: oldProps } = oldVDom
+  const { props: newProps } = newVDom
+  const { compare, type } = newVDom.type
+
+  if (compare(oldProps, newProps)) {
+    newVDom.renderVdom = oldVDom.renderVdom
+    newVDom.dom = oldVDom.dom
+  } else {
+    const renderVdom = type(newProps)
+    _diff(parentDom, oldVDom.renderVdom, renderVdom)
+    newVDom.renderVdom = renderVdom
+  }
 }
 
 const _diff_simple = (parentDom, oldChildren, newChildren) => {
@@ -360,9 +417,8 @@ const _diff = (parentDom, oldChildren, newChildren) => {
 
   const removeVdoms = Object.values(oldChildrenMap)
   removeVdoms.forEach(vdom => {
-    debugger
     if (vdom.dom) {
-      unmount(vdom, false)
+      unmount(vdom, true)
       parentDom.removeChild(vdom.dom)
     }
   })
@@ -399,6 +455,9 @@ const _updateElement = (parentDom, oldVdom, newVdom) => {
   } else if (type && type.$$type === REACT_CONTEXT) {
     _updateContext(parentDom, newVdom, oldVdom)
 
+  } else if (type && type.$$type === REACT_MEMO) {
+    _updateMemo(parentDom, newVdom, oldVdom)
+
   } else if (type === REACT_TEXT) {
     // todo 直接赋值会导致<div>text<div>1234</div></div> => <div>newText</div> 后面的<div>1234</div>会被全部覆盖掉
     parentDom.textContent = newVdom.content
@@ -432,7 +491,7 @@ export const _update = (parentDom, oldVdom, newVdom, nextDom) => {
 
   } else { // oldVdom && newVdom
     if (oldVdom.type !== newVdom.type) {
-      unmount(oldVdom)
+      unmount(oldVdom, newVdom)
       patchVdom(parentDom, newVdom, nextDom)
 
     } else {
@@ -440,3 +499,13 @@ export const _update = (parentDom, oldVdom, newVdom, nextDom) => {
     }
   }
 }
+
+export const createPortal = (vdom, container) => {
+  return {
+    $$type: REACT_PORTAL,
+    children: vdom,
+    containerInfo: container,
+    type: { $$type: REACT_PORTAL }
+  }
+}
+
