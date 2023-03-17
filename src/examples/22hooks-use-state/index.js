@@ -1,5 +1,5 @@
-import React from 'react'
-import ReactDOM from 'react-dom'
+import React from './react'
+import ReactDOM from './react-dom'
 import 'reset-css'
 
 const root = document.getElementById('root')
@@ -7,7 +7,6 @@ const root = document.getElementById('root')
 const App = () => {
   const [num1, setNum1] = React.useState(0)
   const [num2, setNum2] = React.useState(100)
-  const [num3, setNum3] = React.useState(50)
 
   const onAdd = () => {
     setNum1(num1 + 1)
@@ -15,10 +14,6 @@ const App = () => {
 
   const onSub = () => {
     setNum2(num2 - 1)
-  }
-
-  const onAnotherAdd = () => {
-    setNum3(num => num + 1)
   }
 
   return (
@@ -31,10 +26,6 @@ const App = () => {
       <div>{ num2 }</div>
       <div>
         <button onClick={ onSub }>-</button>
-      </div>
-      <div>{ num3 }</div>
-      <div>
-        <button onClick={ onAnotherAdd }>+</button>
       </div>
     </div>
   )

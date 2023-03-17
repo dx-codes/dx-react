@@ -226,10 +226,6 @@ export const unmount = (vdom, newVdom) => {
 
 }
 
-export default function render(vdom, container) {
-  mount(vdom, container)
-}
-
 export const invokeComponentUpdate = (component, nextProps, nextState, prevProps, prevState) => {
   disposeContextType(component)
 
@@ -445,7 +441,7 @@ const _diff = (parentDom, oldChildren, newChildren) => {
   })
 }
 
-const _updateElement = (parentDom, oldVdom, newVdom) => {
+function _updateElement(parentDom, oldVdom, newVdom) {
   const currentDom = oldVdom.dom
   const type = newVdom.type
 
@@ -509,3 +505,12 @@ export const createPortal = (vdom, container) => {
   }
 }
 
+
+export let hooksUpdater
+export default function render(vdom, container) {
+  mount(vdom, container)
+
+  hooksUpdater = () => {
+    _update(container, vdom, vdom)
+  }
+}
