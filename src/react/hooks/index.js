@@ -1,5 +1,15 @@
 import { hooksUpdater } from '../../react-dom/render'
 
+const isDepsSame = (prevDeps, nextDeps) => {
+  if (!prevDeps && !nextDeps) {
+    return true
+  } else if ((prevDeps && !nextDeps) || (!prevDeps && nextDeps)) {
+    return false
+  }
+
+  return prevDeps.every((prevDep, index) => prevDep === nextDeps[index])
+}
+
 const hooksState = []
 let hooksIndex = 0
 
@@ -8,7 +18,8 @@ const update = () => {
   hooksUpdater()
 }
 
-export const useState = (initialState) => {
+// 没有useReducer时的实现
+export const _useState = (initialState) => {
   const state = hooksState[hooksIndex] = hooksState[hooksIndex] || initialState
   const index = hooksIndex
 
@@ -22,12 +33,34 @@ export const useState = (initialState) => {
   return [state, setState]
 }
 
+export const useState = (initialState) => {
+  return useReducer(null, initialState)
+}
+
 export const useReducer = (reducer, initialState) => {
   const state = hooksState[hooksIndex] = hooksState[hooksIndex] || initialState
   const index = hooksIndex
 
   const dispatch = (action) => {
-    const newState = reducer(state, action)
+    if (!action) {
+      return
+    }
+
+    let newState
+
+    if (reducer) {
+      newState = reducer(state, action)
+
+    } else { // useState
+      if (typeof action === 'function') { // setState(num => num + 1)
+        newState = action(state)
+
+      } else {
+        newState = action
+      }
+      
+    }
+
     hooksState[index] = newState
     update()
   }
@@ -35,16 +68,6 @@ export const useReducer = (reducer, initialState) => {
   hooksIndex++
 
   return [state, dispatch]
-}
-
-const isDepsSame = (prevDeps, nextDeps) => {
-  if (!prevDeps && !nextDeps) {
-    return true
-  } else if ((prevDeps && !nextDeps) || (!prevDeps && nextDeps)) {
-    return false
-  }
-
-  return prevDeps.every((prevDep, index) => prevDep === nextDeps[index])
 }
 
 export const useMemo = (factory, dependecies) => {
@@ -110,4 +133,58 @@ export const useEffect = (callback, dependecies) => {
   }
 
   hooksIndex++
+}
+
+export const useLayoutEffect = (callback, dependecies) => {
+  const invoke = (index) => {
+    queueMicrotask(() => {
+      const destroy = callback()
+      hooksState[index] = [destroy, dependecies]
+    })
+  }
+
+  if(hooksState[hooksIndex] === undefined) {
+    invoke(hooksIndex)
+
+  } else {
+    const [prevDestroy, prevDeps] = hooksState[hooksIndex]
+    if (!isDepsSame(prevDeps, dependecies)) {
+      prevDestroy()
+      invoke(hooksIndex)
+    }
+
+  }
+
+  hooksIndex++
+}
+
+export const useRef = (initialState) => {
+  hooksState[hooksIndex] = hooksState[hooksIndex] || { current: initialState }
+  return hooksState[hooksIndex++]
+}
+
+export const useImperativeHandle = (ref, handlerFactory, dependecies) => {
+  
+  if (hooksState[hooksIndex] === undefined) {
+    const handler = handlerFactory()
+    ref.current = handler
+    hooksState[hooksIndex] = [handler, dependecies]
+
+  } else {
+    const [prevHandler, prevDeps] = hooksState[hooksIndex]
+    if (!isDepsSame(prevDeps, dependecies)) {
+      const handler = handlerFactory()
+      ref.current = handler
+      hooksState[hooksIndex] = [handler, dependecies]
+
+    } else {
+      ref.current = prevHandler
+    }
+  }
+
+  hooksIndex++
+}
+
+export const useContext = (context) => {
+  return context._currentValue
 }
