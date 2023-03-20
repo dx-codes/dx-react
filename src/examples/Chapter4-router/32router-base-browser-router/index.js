@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom'
 import { BrowserRouter, Routes, Route } from './react-router-dom'
+import { createBrowserHistory } from 'history'
 import 'reset-css'
 
 const root = document.getElementById('root')
@@ -31,6 +32,9 @@ const Profile = ({ title }) => {
     </div>
   )
 }
+
+const browserHistory = createBrowserHistory()
+console.log(browserHistory)
 
 const App = () => {
 

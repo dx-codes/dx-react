@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="./favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>React App</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <ul>
+      <li><a href="#/a">a</a></li>
+      <li><a href="#/b">b</a></li>
+    </ul>
+
+    <script>
+      const root = document.getElementById('root')
+
+      window.addEventListener('hashchange', () => {
+        const location = window.location
+        console.log(location)
+        const pathname = window.location.hash.slice(1)
+        root.innerHTML = pathname
+      })
+    </script>
+  </body>
+</html>

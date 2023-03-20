@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="./favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>React App</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <ul>
+      <li><div onclick="pushStateA()">push A</div></li>
+      <li><div onclick="pushStateB()">push B</div></li>
+      <li><div onclick="pushStateC()">push C</div></li>
+
+      <li><div> </div></li>
+      <li><div>-------</div></li>
+      <li><div> </div></li>
+
+      <li><div onclick="replaceStateA()">replace A</div></li>
+      <li><div onclick="replaceStateB()">replace B</div></li>
+      <li><div onclick="replaceStateC()">replace C</div></li>
+
+      <li><div> </div></li>
+      <li><div>-------</div></li>
+      <li><div> </div></li>
+
+      <li><div onclick="forward()">forward</div></li>
+      <li><div onclick="back()">back</div></li>
+      <li><div onclick="go(2)">go</div></li>
+    </ul>
+
+    <script>
+      // pushState不会触发popState回调，增加一个函数劫持
+      (function(history) {
+        const originMethod = history.pushState
+
+        history.pushState = function(state, title, pathname) {
+          const result = originMethod.apply(history, arguments)
+
+          if (typeof window.onpopstate === "function") {
+            window.onpopstate(new CustomEvent('popstate', { detail: { pathname, state } }))
+          }
+        }
+
+      })(history)
+
+      const root = document.getElementById('root')
+
+      function pushStateA() {
+        history.pushState({ name: 'A' }, null, '/a')
+      }
+
+      function pushStateB() {
+        history.pushState({ name: 'B' }, null, '/b')
+      }
+
+      function pushStateC() {
+        history.pushState({ name: 'C' }, null, '/c')
+      }
+      
+      function replaceStateA() {
+        history.replaceState({ name: 'A' }, null, '/a')
+      }
+
+      function replaceStateB() {
+        history.replaceState({ name: 'B' }, null, '/b')
+      }
+
+      function replaceStateC() {
+        history.replaceState({ name: 'C' }, null, '/c')
+      }
+
+      function forward() {
+        history.forward()
+      }
+
+      function back() {
+        history.back()
+      }
+
+      function go(delta) {
+        history.go(delta)
+      }
+
+      // 劫持后所有方法均可触发
+      window.onpopstate = (event) => {
+        console.log('popstate', event)
+        const location = window.location
+        console.log(location.pathname)
+      }
+
+      // 只有forward、back和go可以触发
+      // window.addEventListener('popstate', (event) => {
+      //   console.log('popstate', event)
+      //   const location = window.location
+      //   console.log(location.pathname)
+      // })
+
+    </script>
+  </body>
+</html>
