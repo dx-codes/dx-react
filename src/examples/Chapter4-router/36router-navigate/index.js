@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom'
-import { BrowserRouter, Routes, Route } from './react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from './react-router-dom'
 import 'reset-css'
 
 const root = document.getElementById('root')
@@ -14,11 +14,13 @@ const Home = ({ title }) => {
   )
 }
 
-const User = ({ title }) => {
+const User = (props) => {
+
+  console.log(props)
   return (
     <div>
       <div>user</div>
-      <div>{ title }</div>
+      <div>{ props.title }</div>
     </div>
   )
 }
@@ -38,8 +40,9 @@ const App = () => {
     <BrowserRouter>
       <Routes>
         <Route path='/' element={<Home title='t1'/>} ></Route>
-        <Route path='/user' element={<User title='t2'/>} ></Route>
+        <Route path='/user/:id/:age' element={<User title='t2'/>} ></Route>
         <Route path='/profile' element={<Profile title='t3'/>} ></Route>
+        <Route path='/xxx' element={ <Navigate to='/' />}></Route>
       </Routes>
     </BrowserRouter>
   )
@@ -54,3 +57,4 @@ ReactDOM.render(
   element,
   root
 )
+
