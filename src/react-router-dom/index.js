@@ -1,8 +1,8 @@
 import React from 'react'
-import { Router, useLocation, useNavigate } from '../react-router'
-import { createBrowserHistory, createHashHistory } from '../history'
+import { Router, useLocation, useNavigate } from '../react-router/index'
+import { createBrowserHistory } from '../history'
 
-export * from '../react-router'
+export * from '../react-router/index'
 
 export const BrowserRouter = ({ children }) => {
   const historyRef = React.useRef()
